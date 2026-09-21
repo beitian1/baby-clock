@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#FF8A3D">
+<title>宝贝闹钟</title>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+/* SECTION: base */
+:root{
+  --bg:#FFF6E9; --card:#FFFFFF; --primary:#FF8A3D; --primary-deep:#F26B1D;
+  --accent:#FFC94D; --ink:#4A3728; --ink-soft:#8B7361; --line:#F3E3CC;
+  --good:#5CB85C; --bad:#E05B4B; --radius:22px;
+  --shadow:0 6px 22px rgba(242,107,29,.10);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit;font-size:16px;color:var(--ink);background:#fff;border:2px solid var(--line);border-radius:14px;padding:10px 12px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--primary)}
+img{display:block}
+.hidden{display:none!important}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#EAD6B8;border-radius:4px}
+
+/* SECTION: buttons */
+.btn{background:var(--primary);color:#fff;border-radius:18px;padding:12px 22px;font-size:17px;font-weight:600;box-shadow:0 4px 12px rgba(242,107,29,.28);transition:transform .08s,filter .15s;min-height:48px}
+.btn:active{transform:scale(.96)}
+.btn.ghost{background:#fff;color:var(--primary-deep);border:2px solid var(--primary)}
+.btn.soft{background:#FFEAD5;color:var(--primary-deep);box-shadow:none}
+.btn.danger{background:var(--bad);box-shadow:0 4px 12px rgba(224,91,75,.28)}
+.btn.small{padding:7px 14px;font-size:14px;border-radius:12px;min-height:38px}
+.btn.block{width:100%}
+
+/* SECTION: child layout */
+#child-view,#parent-view{height:100dvh;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;flex:0 0 auto;flex-wrap:wrap}
+.topbar .device-chip{background:#fff;border-radius:999px;padding:5px 14px;font-size:13px;font-weight:600;box-shadow:var(--shadow);color:var(--primary-deep);max-width:44vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .spacer{flex:1}
+.icon-btn{width:38px;height:38px;border-radius:13px;background:#fff;box-shadow:var(--shadow);font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.icon-btn.on{background:var(--accent)}
+.weather-pill{display:flex;align-items:center;gap:6px;background:#fff;border-radius:999px;padding:5px 12px;font-size:13px;box-shadow:var(--shadow)}
+.layout{flex:1;display:flex;flex-direction:column;gap:12px;padding:4px 12px 14px;overflow-y:auto}
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+.col-clock{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;flex:0 0 auto}
+.greet{font-size:clamp(15px,min(4.2vw,3.2vh),24px);color:var(--primary-deep);font-weight:700}
+.clock-face{font-size:clamp(38px,min(13.5vw,10.5vh),116px);font-weight:800;letter-spacing:2px;line-height:1.05;font-variant-numeric:tabular-nums}
+.clock-face .sec{font-size:.38em;color:var(--primary);vertical-align:baseline}
+.date-line{font-size:clamp(12px,min(3.4vw,2.4vh),18px);color:var(--ink-soft)}
+.clock-ring{width:min(62vw,30vh,264px);height:min(62vw,30vh,264px);border-radius:50%;border:8px solid #FFE3C2;display:flex;align-items:center;justify-content:center;position:relative}
+.clock-ring::before{content:"";position:absolute;inset:-20px;border-radius:50%;border:3px dashed #FFD9A8}
+.col-menu{display:flex;gap:10px;overflow-x:auto;padding-bottom:2px}
+.menu-item{flex:1;min-width:82px;background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:14px;font-weight:600;color:var(--ink-soft)}
+.menu-item .mi{font-size:26px}
+.menu-item.active{background:var(--primary);color:#fff}
+.col-detail{flex:1;min-height:0}
+.col-detail .card{height:100%;overflow-y:auto}
+.sec-title{font-size:19px;font-weight:800;color:var(--primary-deep);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.sec-title .sub{font-size:13px;font-weight:500;color:var(--ink-soft);margin-left:auto}
+.empty-tip{text-align:center;color:var(--ink-soft);padding:34px 10px;font-size:15px;line-height:1.8}
+
+@media (orientation:landscape) and (min-width:560px){
+  .layout{flex-direction:row;overflow:hidden}
+  .col-clock{flex:0 0 30%;padding:0}
+  .col-menu{flex:0 0 19%;flex-direction:column;overflow-y:auto}
+  .col-detail{flex:1;min-width:0}
+  .col-detail .card{padding:14px}
+  .menu-item{min-width:0}
+}
+
+/* SECTION: homework & timetable (child) */
+.hw-item{background:#FFF9F0;border:2px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px;font-size:18px;font-weight:600;line-height:1.6;white-space:pre-wrap;word-break:break-all}
+.hw-imgs{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+.hw-imgs figure{width:120px}
+.hw-imgs img{width:120px;height:90px;object-fit:cover;border-radius:12px;border:2px solid var(--line);cursor:zoom-in}
+.hw-imgs figcaption{font-size:12px;color:var(--ink-soft);text-align:center;margin-top:3px}
+.tt-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1.5px dashed var(--line);font-size:17px}
+.tt-row .no{width:34px;height:34px;border-radius:12px;background:#FFEAD5;color:var(--primary-deep);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:0 0 auto}
+.tt-row.now{background:#FFF3DF;border-radius:14px}
+.tt-row .sub{margin-left:auto;font-size:12px;color:var(--ink-soft)}
+
+/* SECTION: audio player */
+.file-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+#audio-list{max-height:180px;overflow-y:auto;margin-bottom:12px}
+.track{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;font-size:15px}
+.track:nth-child(odd){background:#FFF9F0}
+.track.cur{background:#FFEAD5;color:var(--primary-deep);font-weight:700}
+.track .t-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track .t-dur{color:var(--ink-soft);font-size:13px}
+.track .t-del{color:var(--bad);font-size:16px;padding:2px 8px}
+.player{background:linear-gradient(135deg,#FF8A3D,#FFB35C);border-radius:18px;padding:14px 16px;color:#fff}
+.player .p-name{font-weight:700;font-size:16px;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.player input[type=range]{width:100%;accent-color:#fff;background:transparent;border:none;padding:2px}
+.player .p-time{display:flex;justify-content:space-between;font-size:12px;opacity:.9;margin-top:2px}
+.p-ctrl{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:8px}
+.p-ctrl button{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center}
+.p-ctrl .main{background:#fff;color:var(--primary-deep);width:62px;height:62px;font-size:26px}
+.p-mode{ text-align:center;margin-top:8px;font-size:13px;opacity:.95;cursor:pointer}
+
+/* SECTION: focus timer */
+.focus-wrap{display:flex;flex-direction:column;align-items:center;gap:14px}
+.focus-presets{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.ring-box{position:relative;width:min(52vw,26vh,220px);height:min(52vw,26vh,220px)}
+.ring-box svg{transform:rotate(-90deg);width:100%;height:100%}
+.ring-box .txt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-box .txt b{font-size:clamp(34px,9vw,52px);font-variant-numeric:tabular-nums}
+.ring-box .txt span{font-size:13px;color:var(--ink-soft)}
+
+/* SECTION: settings */
+.set-row{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1.5px dashed var(--line);font-size:16px}
+.set-row label{flex:1;font-weight:600}
+.set-row input,.set-row select{width:auto;min-width:110px;text-align:center}
+.set-row input[type=number]{width:90px}
+.set-row input[type=time]{width:130px}
+.set-row input[type=text],.set-row input[type=password]{flex:1.4}
+.hint{font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin-top:10px;background:#FFF9F0;border-radius:12px;padding:10px 12px}
+
+/* SECTION: alarm screen (fullscreen) */
+#alarm-screen{position:fixed;inset:0;z-index:80;background:linear-gradient(160deg,#FF9A4D,#FFC94D);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;text-align:center;padding:24px}
+#as-clock{font-size:clamp(52px,min(16vw,13vh),132px);font-weight:800;font-variant-numeric:tabular-nums}
+#as-icon{font-size:clamp(40px,min(10vw,8vh),64px);animation:shake 1s infinite}
+@keyframes shake{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(12deg)}}
+#as-msg{font-size:clamp(17px,4.5vw,24px);font-weight:600;line-height:1.7;max-width:640px}
+#alarm-screen .btn{background:#fff;color:var(--primary-deep);font-size:20px;padding:14px 44px;border-radius:26px}
+#as-audio{font-size:14px;opacity:.9}
+
+/* SECTION: call screen */
+#call-screen{position:fixed;inset:0;z-index:90;background:rgba(40,26,16,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:#fff;text-align:center;padding:24px}
+#cs-avatar{width:110px;height:110px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:52px;box-shadow:0 0 0 10px rgba(255,138,61,.25)}
+#cs-avatar.ringing{animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 6px rgba(255,138,61,.3)}50%{box-shadow:0 0 0 26px rgba(255,138,61,0)}}
+#cs-title{font-size:26px;font-weight:700}
+#cs-state{font-size:15px;opacity:.85}
+#cs-timer{font-size:20px;font-variant-numeric:tabular-nums;color:var(--accent)}
+#cs-peers{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+#cs-peers .peer{background:rgba(255,255,255,.12);border-radius:14px;padding:8px 14px;font-size:14px}
+#cs-peers .peer.off{opacity:.45}
+.call-btns{display:flex;gap:22px;margin-top:6px}
+.call-btns button{width:66px;height:66px;border-radius:50%;font-size:26px;color:#fff;background:rgba(255,255,255,.2)}
+.call-btns .hang{background:var(--bad)}
+.call-btns .muting{background:var(--accent);color:var(--ink)}
+
+/* SECTION: kiosk lock */
+#lk-mask{position:fixed;inset:0;z-index:100;background:rgba(40,26,16,.6);display:flex;align-items:center;justify-content:center;padding:20px}
+#lk-modal{background:#fff;border-radius:24px;padding:26px 24px;width:min(92vw,360px);text-align:center}
+#lk-modal h3{color:var(--primary-deep);margin-bottom:14px;font-size:20px}
+#lk-pw{width:100%;text-align:center;font-size:24px;letter-spacing:10px;margin-bottom:6px}
+#lk-err{color:var(--bad);font-size:14px;height:20px;margin-bottom:6px}
+body.locked .hide-locked,body.locked .topbar .icon-btn,body.locked .menu-item{display:none!important}
+body.locked .col-menu{display:none}
+body.locked .layout{flex-direction:row}
+@media (orientation:portrait){body.locked .layout{flex-direction:column}}
+body.locked .col-detail{flex:1}
+
+/* SECTION: nightlight */
+body.nightlight{background:#1A0F06;filter:brightness(.62) sepia(.5) hue-rotate(-14deg)}
+body.nightlight .card,body.nightlight .menu-item,body.nightlight .topbar .device-chip,body.nightlight .weather-pill,body.nightlight .icon-btn{background:#2A1A0C;color:#E8B36B;box-shadow:none}
+body.nightlight .greet{color:#F0B264}
+body.nightlight .clock-face{color:#F5C87E}
+body.nightlight .date-line,body.nightlight .mi,body.nightlight .sub{color:#B98A52}
+body.nightlight .menu-item.active{background:#8A5A22;color:#FFDFAE}
+body.nightlight .sec-title{color:#F0B264}
+body.nightlight .hw-item{background:#33200F;border-color:#4A2F16;color:#F0CDA0}
+
+/* SECTION: parent view */
+#parent-view{overflow-y:auto}
+.p-header{display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap}
+.p-header h1{font-size:22px;color:var(--primary-deep)}
+.dev-tabs{display:flex;gap:8px;overflow-x:auto;padding:0 18px 8px}
+.dev-tab{flex:0 0 auto;background:#fff;border-radius:999px;padding:9px 20px;font-size:15px;font-weight:600;color:var(--ink-soft);box-shadow:var(--shadow)}
+.dev-tab.active{background:var(--primary);color:#fff}
+.p-body{padding:4px 16px 26px;display:flex;flex-direction:column;gap:16px}
+.p-grid{display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:960px){.p-grid{grid-template-columns:1fr 1fr}}
+.al-item{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1.5px dashed var(--line);font-size:16px}
+.al-item b{font-size:21px;font-variant-numeric:tabular-nums}
+.al-item .meta{color:var(--ink-soft);font-size:13px;flex:1}
+.al-form{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+.hw-editor-imgs{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+.hei{position:relative;width:110px}
+.hei img{width:110px;height:82px;object-fit:cover;border-radius:10px;border:2px solid var(--line)}
+.hei span{font-size:11px;color:var(--ink-soft);display:block;text-align:center}
+.hei .del{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;background:var(--bad);color:#fff;font-size:14px;line-height:24px;text-align:center}
+.tt-editor{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.tt-editor .hd{font-size:13px;font-weight:700;color:var(--primary-deep);text-align:center}
+.tt-editor input{width:100%;padding:7px 4px;font-size:12.5px;border-radius:9px;text-align:center;border:1.5px solid var(--line)}
+.call-dev{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1.5px dashed var(--line)}
+.call-dev .st{margin-left:auto;font-size:13px;color:var(--ink-soft)}
+.call-dev .st.online{color:var(--good)}
+
+/* SECTION: misc */
+#toast{position:fixed;left:50%;bottom:46px;transform:translateX(-50%);background:rgba(74,55,40,.94);color:#fff;padding:12px 24px;border-radius:999px;font-size:15px;z-index:120;opacity:0;pointer-events:none;transition:opacity .25s;max-width:88vw;text-align:center}
+#toast.show{opacity:1}
+.lock-hint{display:none;text-align:center;font-size:13px;color:var(--ink-soft);padding:6px}
+body.locked .lock-hint{display:block}
+#img-lightbox{position:fixed;inset:0;z-index:110;background:rgba(20,12,6,.92);display:flex;align-items:center;justify-content:center;padding:18px}
+#img-lightbox img{max-width:100%;max-height:100%;border-radius:12px}
+.badge{display:inline-block;background:#FFEAD5;color:var(--primary-deep);border-radius:8px;padding:2px 8px;font-size:12px;font-weight:700}
+</style>
+</head>
+<body>
+
+<!-- SECTION: child view -->
+<div id="child-view">
+  <div class="topbar">
+    <span class="device-chip" id="cv-device-chip">📱 宝贝的闹钟</span>
+    <span class="weather-pill" id="cv-weather">⏳ 天气加载中…</span>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="nl-btn" title="小夜灯">🌙</button>
+    <button class="icon-btn hide-locked" id="lock-btn" title="锁定屏幕">🔒</button>
+    <button class="icon-btn hide-locked" id="cv-settings-btn" title="设置">⚙️</button>
+  </div>
+  <div class="layout">
+    <div class="card col-clock">
+      <div class="greet" id="clk-greet">你好呀</div>
+      <div class="clock-ring"><div>
+        <div class="clock-face"><span id="clk-hm">--:--</span><span class="sec" id="clk-sec">--</span></div>
+        <div class="date-line" id="clk-date">--</div>
+      </div></div>
+      <div class="date-line" id="clk-week">--</div>
+    </div>
+    <div class="lock-hint">🔒 锁定中 · 双击屏幕输入密码解锁</div>
+    <nav class="col-menu" id="cv-menu">
+      <button class="menu-item active" data-sec="sec-homework"><span class="mi">📖</span>今日作业</button>
+      <button class="menu-item" data-sec="sec-timetable"><span class="mi">🗓️</span>课程表</button>
+      <button class="menu-item" data-sec="sec-audio"><span class="mi">🎧</span>听故事</button>
+      <button class="menu-item" data-sec="sec-focus"><span class="mi">⏳</span>专注</button>
+      <button class="menu-item" data-sec="sec-call"><span class="mi">📞</span>通话</button>
+    </nav>
+    <div class="col-detail">
+      <!-- SECTION: child homework -->
+      <section class="card" id="sec-homework">
+        <div class="sec-title">📖 今日作业 <span class="sub" id="hw-date-label"></span></div>
+        <div id="hw-content"></div>
+        <div style="margin-top:10px"><button class="btn small ghost" id="hw-history-btn">📜 查看历史作业</button></div>
+        <div id="hw-history" class="hidden"></div>
+      </section>
+      <!-- SECTION: child timetable -->
+      <section class="card hidden" id="sec-timetable">
+        <div class="sec-title">🗓️ 今日课程 <span class="sub" id="tt-day-label"></span></div>
+        <div id="tt-content"></div>
+      </section>
+      <!-- SECTION: child audio -->
+      <section class="card hidden" id="sec-audio">
+        <div class="sec-title">🎧 听故事 <span class="sub">音频保存在本机</span></div>
+        <div class="file-row">
+          <label class="btn small">＋ 选择音频文件<input type="file" id="audio-file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac" multiple class="hidden"></label>
+          <label class="btn small ghost">📁 导入整个文件夹<input type="file" id="audio-folder" webkitdirectory directory multiple class="hidden"></label>
+        </div>
+        <div id="audio-list"></div>
+        <div class="player">
+          <div class="p-name" id="pl-name">还没有音频，先导入文件吧</div>
+          <input type="range" id="pl-bar" min="0" max="1000" value="0">
+          <div class="p-time"><span id="pl-cur">00:00</span><span id="pl-total">00:00</span></div>
+          <div class="p-ctrl">
+            <button id="pl-mode-btn" title="播放模式">🔁</button>
+            <button id="pl-prev">⏮</button>
+            <button class="main" id="pl-play">▶</button>
+            <button id="pl-next">⏭</button>
+            <button id="pl-stop" title="停止">⏹</button>
+          </div>
+          <div class="p-mode" id="pl-mode-text">顺序播放</div>
+        </div>
+      </section>
+      <!-- SECTION: child focus -->
+      <section class="card hidden" id="sec-focus">
+        <div class="sec-title">⏳ 专注倒计时</div>
+        <div class="focus-wrap">
+          <div class="focus-presets" id="fc-presets">
+            <button class="btn soft" data-min="15">15 分钟</button>
+            <button class="btn soft" data-min="25">25 分钟</button>
+            <button class="btn soft" data-min="45">45 分钟</button>
+            <button class="btn soft" data-min="60">60 分钟</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            自定义 <input type="number" id="fc-custom" min="1" max="180" value="10" style="width:80px;text-align:center"> 分钟
+            <button class="btn small" id="fc-start">开始</button>
+          </div>
+          <div class="ring-box">
+            <svg viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="#FFE3C2" stroke-width="10"/>
+              <circle cx="60" cy="60" r="52" fill="none" stroke="#FF8A3D" stroke-width="10" stroke-linecap="round" id="fc-prog" stroke-dasharray="326.7" stroke-dashoffset="0"/>
+            </svg>
+            <div class="txt"><b id="fc-time">--:--</b><span id="fc-label">选个时间开始专注吧</span></div>
+          </div>
+          <div style="display:flex;gap:12px">
+            <button class="btn ghost hidden" id="fc-pause">⏸ 暂停</button>
+            <button class="btn danger hidden" id="fc-cancel">✕ 取消</button>
+          </div>
+        </div>
+      </section>
+      <!-- SECTION: child call -->
+      <section class="card hidden" id="sec-call">
+        <div class="sec-title">📞 亲情对讲</div>
+        <div id="call-child-panel">
+          <div class="hint">父母端点「呼叫」即可接通本机。通话使用真实语音（WebRTC），两台设备都需联网并打开<b>同一个网址</b>；首次通话时浏览器会请求麦克风权限，请点击允许。若两台设备的设置里房号相同，即可互相通话。</div>
+          <div id="cc-status" class="hw-item" style="font-size:15px">对讲状态：未连接</div>
+        </div>
+      </section>
+      <!-- SECTION: child settings -->
+      <section class="card hidden" id="sec-settings">
+        <div class="sec-title">⚙️ 设置</div>
+        <div id="child-settings"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION: parent view -->
+<div id="parent-view" class="hidden">
+  <div class="p-header">
+    <h1>👨‍👩‍👧 家长管理台</h1>
+    <button class="btn small ghost" id="pm-back-child">← 返回孩子端界面</button>
+    <span class="badge" id="pm-storage-hint">数据保存在本浏览器</span>
+  </div>
+  <div class="dev-tabs" id="pm-dev-tabs"></div>
+  <div class="p-body">
+    <div class="p-grid">
+      <!-- SECTION: parent alarms -->
+      <section class="card">
+        <div class="sec-title">⏰ 闹钟管理 <span class="sub" id="al-dev-label"></span></div>
+        <div id="al-list"></div>
+        <div class="al-form">
+          <input type="time" id="al-time" value="07:00">
+          <select id="al-repeat"><option value="daily">每天</option><option value="weekdays">工作日</option><option value="custom">自定义</option></select>
+          <select id="al-days" class="hidden"><option value="1,2,3,4,5">一~五</option><option value="6,7">周末</option><option value="1,3,5">一三五</option><option value="2,4,6">二四六</option></select>
+          <select id="al-ring"></select>
+          <input type="number" id="al-dur" min="1" max="120" value="15" style="width:74px" title="播放时长(分)">
+          <button class="btn small" id="al-add">＋ 添加闹钟</button>
+        </div>
+      </section>
+      <!-- SECTION: parent homework -->
+      <section class="card">
+        <div class="sec-title">📖 作业编辑 <span class="sub">孩子端 30 秒内自动看到</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+          日期 <input type="date" id="ph-date">
+          <button class="btn small ghost" id="ph-today">回到今天</button>
+        </div>
+        <textarea id="ph-text" rows="3" placeholder="输入文字作业，如：语文：第5课生字每个写三行" style="width:100%"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <input type="text" id="ph-caption" placeholder="图片说明，如 数学作业" style="flex:1;min-width:130px">
+          <label class="btn small">🖼 添加图片<input type="file" id="ph-img" accept="image/*" class="hidden"></label>
+        </div>
+        <div class="hw-editor-imgs" id="ph-imgs"></div>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <button class="btn" id="ph-save">💾 保存作业</button>
+          <button class="btn danger small" id="ph-del-all">🗑 删除当天全部</button>
+        </div>
+      </section>
+      <!-- SECTION: parent timetable -->
+      <section class="card">
+        <div class="sec-title">🗓️ 课程表编辑 <span class="sub">每天 8 节课</span></div>
+        <div class="tt-editor" id="pt-grid"></div>
+      </section>
+      <!-- SECTION: parent call panel -->
+      <section class="card">
+        <div class="sec-title">📞 亲情对讲</div>
+        <div id="pm-call-list"></div>
+        <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn" id="ca-group">👨‍👩‍👧‍👦 群通话（所有孩子）</button>
+          <button class="btn small danger hidden" id="ca-hangall">全部挂断</button>
+        </div>
+        <div class="hint">先让孩子设备在「设置 → 对讲」中填同一个房号，且两台设备打开<b>同一个网址</b>，即可真实通话。当前浏览器环境：<b id="pm-env">检测中…</b></div>
+      </section>
+      <!-- SECTION: parent settings -->
+      <section class="card">
+        <div class="sec-title">⚙️ 系统设置</div>
+        <div id="pm-settings"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION: alarm screen -->
+<div id="alarm-screen" class="hidden">
+  <div id="as-icon">⏰</div>
+  <div id="as-clock">--:--</div>
+  <div id="as-msg"></div>
+  <div id="as-audio"></div>
+  <button class="btn" id="as-close">关闭闹钟</button>
+</div>
+
+<!-- SECTION: call screen -->
+<div id="call-screen" class="hidden">
+  <div id="cs-avatar">📞</div>
+  <div id="cs-title">通话</div>
+  <div id="cs-state">正在呼叫…</div>
+  <div id="cs-timer" class="hidden">00:00</div>
+  <div id="cs-peers"></div>
+  <div class="call-btns">
+    <button id="cs-answer" class="hidden">📲</button>
+    <button id="cs-mute" title="静音">🎤</button>
+    <button id="cs-hangup" class="hang" title="挂断">📴</button>
+  </div>
+</div>
+
+<!-- SECTION: kiosk lock modal -->
+<div id="lk-mask" class="hidden">
+  <div id="lk-modal">
+    <h3>🔒 请输入解锁密码</h3>
+    <input type="password" id="lk-pw" inputmode="numeric" maxlength="8" placeholder="····">
+    <div id="lk-err"></div>
+    <button class="btn block" id="lk-ok">解锁</button>
+    <button class="btn small ghost block" id="lk-close" style="margin-top:10px">取消</button>
+  </div>
+</div>
+
+<div id="img-lightbox" class="hidden"><img id="lb-img" alt="作业图片放大"></div>
+<div id="toast"></div>
+
+<script src="assets/core.js"></script>
+<script src="assets/audio.js"></script>
+<script src="assets/content.js"></script>
+<script src="assets/parent.js"></script>
+<script src="assets/call.js"></script>
+</body>
+</html>
